@@ -154,6 +154,17 @@ td.num { font-variant-numeric: tabular-nums; text-align: right; }
     <select id="ov-env" aria-label="Okolje"><option value="vit-3">vit-3</option><option value="vit-2">vit-2</option></select>
   </div>
   <div class="tiles" id="ov-tiles"></div>
+  <div class="grid2">
+    <div class="card">
+      <h2>Koliko doda vsak steber (ablacija)</h2>
+      <div class="hint">Isti incidenti, isto ocenjevanje; vsaka vrstica doda eno idejo. Celica: ujeti / vsi · lažni alarmi na dan.</div>
+      <table><thead id="ov-ab-head"></thead><tbody id="ov-ab"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Kaj smo izvedeli</h2>
+      <ul id="ov-learn" style="margin:4px 0 0;padding-left:18px"></ul>
+    </div>
+  </div>
   <div class="card">
     <h2>Tveganje skozi celotno obdobje</h2>
     <div class="legend"><span><i class="line" style="background:var(--series-1)"></i>tveganje</span><span><i class="line" style="background:var(--muted)"></i>pragova OPAZUJ / ALARM</span><span><i style="background:var(--critical)"></i>▲ alarm</span><span><i style="background:var(--band);border:1px solid var(--critical)"></i>dejanski izpad</span></div>
@@ -483,6 +494,8 @@ async function loadOverview() {
   al.data = r.alerts.map((a) => ({ x: a.t, y: Math.min(a.risk, 120) }));
   ovChart = new Chart($("c-ov"), { type: "line", options: o, data: { datasets: [line, al] } });
 
+  renderAblation(r.ablation, env);
+  renderLearned(r.insights, r.summary);
   const inc = $("ov-inc"); inc.textContent = "";
   const rows = labeled ? r.eval.incidents.filter((i) => (i.quiet_before_min || 0) >= 360).slice(0, 40) : r.eval.incidents;
   for (const i of rows) {
@@ -509,6 +522,50 @@ async function loadOverview() {
     const td3 = document.createElement("td"); td3.className = "num"; td3.textContent = fmt.format(e.n);
     tr.append(td1, td2, td3); ct.append(tr);
   }
+}
+
+function renderAblation(ab, env) {
+  const head = $("ov-ab-head"), body = $("ov-ab");
+  head.textContent = ""; body.textContent = "";
+  if (!ab) { body.innerHTML = '<tr><td class="empty">Poženi: seedwatch.cli ablation</td></tr>'; return; }
+  const envs = Object.keys(ab.results);
+  const hr = document.createElement("tr");
+  for (const h of ["", ...envs.map((e) => e === "bgl" ? "BGL" : e)]) {
+    const th = document.createElement("th"); th.textContent = h; if (h) th.className = "num"; hr.append(th);
+  }
+  head.append(hr);
+  for (const c of ab.configs) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td"); td.textContent = `${c.id} · ${c.label}`; tr.append(td);
+    for (const e of envs) {
+      const x = ab.results[e][c.id], cell = document.createElement("td");
+      cell.className = "num"; cell.textContent = `${x.caught}/${x.outages} · ${x.fa_per_day.toFixed(2)}`;
+      if (e === env) cell.style.fontWeight = "600";
+      tr.append(cell);
+    }
+    body.append(tr);
+  }
+}
+
+function renderLearned(ins, summary) {
+  const ul = $("ov-learn"); ul.textContent = "";
+  if (!ins) { ul.innerHTML = '<li class="empty">Poženi: seedwatch.cli insights</li>'; return; }
+  const items = [];
+  const v3 = ins["vit-3"], bgl = ins.bgl;
+  if (v3) {
+    const loud = v3.noise.clockwork_errors[0];
+    items.push(`${Math.round(v3.noise.noise_share * 100)} % WARN/ERROR v vit-3 je šum. Najglasnejši ERROR (${loud.logger}, ${fmt.format(loud.n)}×) tiktaka kot ${loud.reason}.`);
+    const cron = v3.noise.clockwork_errors.find((x) => x.reason.startsWith("cron"));
+    if (cron) items.push(`„${cron.template}“ (ERROR) ni okvara: ${cron.reason}.`);
+  }
+  if (bgl && bgl.local) items.push(`BGL: ${fmt.format(bgl.local.fatal_not_alert)} od ${fmt.format(bgl.local.fatal_lines)} vrstic FATAL ni bil alarm – nivo sam laže.`);
+  if (bgl && bgl.local && bgl.precursor_lift)
+    items.push(`Okvare so večinoma nenadne: lokalni predznaki le pri ${bgl.local.rack_local_precursor}/${bgl.local.isolated} čistih incidentih, največji lift predznaka ${bgl.precursor_lift.max_lift}.`);
+  const inv = Object.values(ins).filter((e) => e.invariants);
+  if (inv.length) items.push(`Invariante (START↔FINISH, Active↔Inactive): ${inv.reduce((a, e) => a + e.invariants.pairs, 0)} parov, ${inv.reduce((a, e) => a + e.invariants.breaks, 0)} zlomov – ob izpadu utihne vse naenkrat.`);
+  const ch = summary.total.chaos;
+  if (ch && ch.heartbeat_thinning) items.push(`Kjer se težava gradi postopoma, jo ujamemo zgodaj: upad utripa ${ch.heartbeat_thinning.median_lead_min} min pred izpadom (mediana, chaos test).`);
+  for (const t of items) { const li = document.createElement("li"); li.textContent = t; li.style.margin = "4px 0"; ul.append(li); }
 }
 
 function initScenarios(list) {

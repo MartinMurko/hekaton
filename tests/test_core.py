@@ -2,7 +2,7 @@ import unittest
 
 from seedwatch import fields
 from seedwatch.aggregate import MinuteAggregator
-from seedwatch.predict import binom_kl, kl
+from seedwatch.predict import WARMUP_MIN, Predictor, binom_kl, kl
 from seedwatch.profile import _cron, classify_text
 from seedwatch.template import entities, template
 
@@ -75,6 +75,31 @@ class ScoreTest(unittest.TestCase):
         self.assertAlmostEqual(kl(10, 10), 0.0)
         self.assertGreater(kl(0, 400), 300)       # silence is very surprising
         self.assertEqual(binom_kl(1, 30, 0.5), 0.0)  # fewer than expected never scores
+
+
+class RareSevereTest(unittest.TestCase):
+    PROFILE = {"tpl": {
+        "panic": {"class": "seed", "level": "CRITICAL", "template": "kernel panic", "reason": "", "logger": "K"},
+        "tick": {"class": "weed", "level": "CRITICAL", "template": "fatal tick", "reason": "metronom", "logger": "K"}},
+        "groups": {}, "heartbeats": {}}
+
+    def _alerts(self, fires):
+        pred = Predictor(self.PROFILE)
+        out = []
+        for i in range(WARMUP_MIN + 60):
+            st = pred.step(i * 60, {"n": 100, "lv": {}, "lg": {}, "pod": {}, "tpl": fires(i)}, None)
+            if st["alert"]:
+                out.append((i, st["alert"]))
+        return out
+
+    def test_rare_critical_alerts_on_first_line(self):
+        at = WARMUP_MIN + 30
+        (i, alert), = self._alerts(lambda i: {"panic": 1} if i == at else {})
+        self.assertEqual(i, at)
+        self.assertEqual(alert["rare"][0]["tid"], "panic")
+
+    def test_frequent_critical_noise_does_not(self):
+        self.assertEqual(self._alerts(lambda i: {"tick": 1}), [])
 
 
 if __name__ == "__main__":

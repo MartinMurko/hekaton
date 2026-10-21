@@ -51,6 +51,14 @@ def analyze_env(out, env, threshold=predict.THRESHOLD):
     for r in synthetic:
         r["env"] = env
     result["summary"]["labeled"] = s.labeled
+    if s.labeled:
+        # rules and RARE_P were chosen while looking at the whole set: report the second half on its own too
+        mid = s.t[len(s) // 2]
+        half = evaluate.score([i for i in incidents if i["start"] >= mid], [a for a in alerts if a["t"] >= mid],
+                              len(s) - len(s) // 2, prof,
+                              watches=[w for w in predict.watches(states) if w["t"] >= mid])["summary"]
+        result["summary"]["test_half"] = {k: half[k] for k in ("outages", "caught", "predicted", "fa_per_day",
+                                                                 "isolated", "days")}
     return {"env": env, "summary": result["summary"], "incidents": result["incidents"],
             "cards": cards, "profile": prof, "chaos": synthetic}
 

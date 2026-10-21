@@ -62,10 +62,14 @@ def overview(out, env):
         k = -(-len(risk) // 15000)
         risk = [max(risk[i:i + k], key=lambda r: r[1]) for i in range(0, len(risk), k)]
     envs = sorted(p.parent.name for p in Path(out).glob("*/risk.jsonl"))
+    extra = {}
+    for name in ("ablation", "insights"):
+        f = Path(out) / f"{name}.json"
+        extra[name] = orjson.loads(f.read_bytes()) if f.exists() else None
     return {"env": env, "envs": envs, "risk": risk, "incidents": load("incidents.json"),
             "alerts": load("alerts.json"), "eval": load("eval.json"), "classes": classes, "examples": pick,
             "summary": summary, "env_summary": summary["per_env"].get(env, {}), "batch": batch,
-            "scenarios": SCENARIOS}
+            "scenarios": SCENARIOS, **extra}
 
 
 def make_handler(out, raw_files):

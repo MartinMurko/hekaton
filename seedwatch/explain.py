@@ -30,6 +30,14 @@ def _fmt(t):
     return _dt.datetime.fromtimestamp(t, _dt.UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _ago(minutes):
+    if minutes < 120:
+        return f"{minutes} min"
+    if minutes < 2 * 1440:
+        return f"{minutes / 60:.0f} h"
+    return f"{minutes / 1440:.0f} dni"
+
+
 def describe_entity(ent):
     for rx, desc in COMPONENTS:
         if rx.search(ent):
@@ -71,7 +79,16 @@ class Explainer:
             for x in e["ents"]:
                 ents[x] += e["count"]
         why = []
+        rare = {r["tid"]: r for r in alert.get("rare") or []}
+        for tid, r in rare.items():
+            m = tpl_meta.get(tid)
+            if m:
+                when = f"zadnjič pred {_ago(r['quiet_min'])}" if r["quiet_min"] else "prvič v zgodovini"
+                why.append(f"{m['logger']}: „{m['template'][:90]}“ – nivo {m['level']}, "
+                           f"redkejše kot 1× na 2 dni ({when})")
         for score, tid in alert["top_tpl"][:3]:
+            if tid in rare:
+                continue
             m = tpl_meta.get(tid)
             if not m:
                 continue
@@ -101,6 +118,8 @@ class Explainer:
             title = "Odzivi hostov se upočasnjujejo"
         elif dominant == "unanswered":
             title = "Hosti ne odgovarjajo na sporočila"
+        elif top and top[0] in rare:
+            title = f"Redek kritičen dogodek: {tpl_meta[top[0]]['logger']}"
         else:
             m = tpl_meta.get(top[0]) if top else None
             title = f"Nenavaden vzorec napak: {m['logger']}" if m else "Nenavaden vzorec napak"

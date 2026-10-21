@@ -2,7 +2,9 @@
 
 Pretočni pipeline, ki 25 GB logov Vynamic Payments (vit-2, vit-3) prebere v ~25 s pod 512 MB RAM,
 loči šum od signala po **obnašanju** (ne po nivoju ali besedi „error“) in opozori na izpad z razlago
-*kaj, kje, zakaj in kaj narediti*.
+*kaj, kje, zakaj in kaj narediti*. Preverjeno tudi na javnem naboru superračunalnika BGL.
+
+Scenarij 5-minutne predstavitve in odgovori na vprašanja žirije: [PITCH.md](PITCH.md).
 
 ## Hiter začetek
 
@@ -17,6 +19,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 # 3) demo: http://127.0.0.1:8765/   (živi replay iz surovih datotek + pregled 5 dni)
 .venv/bin/python -m seedwatch.cli serve --out out --raw-dir ..
+
+# 4) številke za predstavitev: koliko doda vsak steber, kaj smo izvedeli
+.venv/bin/python -m seedwatch.cli ablation --out out
+.venv/bin/python -m seedwatch.cli insights --out out --raw-dir ../data/bgl
 
 # testi
 .venv/bin/python -m unittest discover -s tests -t .
@@ -84,7 +90,7 @@ profil šuma (ritem, cron, zagon poda, baza znanja) ─► napovednik (online, s
 | | SeedWatch | naiven prag WARN+ERROR/min |
 |---|---|---|
 | Ujeti izpadi (7, samodejne oznake) | **7/7**, vsi z vsebinsko pravim vzrokom | 5/7 |
-| Lažni alarmi | **1,25 / dan** (OPAZUJ: 5,3 / dan, samo nadzorna plošča) | 1,83 / dan, brez razlage |
+| Lažni alarmi | **1,25 / dan** (OPAZUJ: 5,1 / dan, samo nadzorna plošča) | 1,83 / dan, brez razlage |
 | Hitrost / RAM | 1,0 GB/s, < 512 MB (Docker: 261 MB) | – |
 
 Chaos injection: 120 sintetičnih 30-minutnih postopnih degradacij na resničnem ozadju, nato izpad.
@@ -92,7 +98,7 @@ Chaos injection: 120 sintetičnih 30-minutnih postopnih degradacij na resničnem
 | Scenarij | ALARM pred izpadom | OPAZUJ ≥ 10 min prej |
 |---|---|---|
 | nov WARN vzorec narašča | 24/24 (mediana 9 min) | 21/24 |
-| redka napaka postaja pogostejša | 23/24 (6 min) | 15/24 |
+| redka napaka postaja pogostejša | 23/24 (5,5 min) | 14/24 |
 | latenca 4 hostov do 6× | 21/24 (3,5 min) | 3/24 |
 | neodgovorjena sporočila do 60 % | 24/24 (8 min) | 21/24 |
 | utrip upade na 20 % | 24/24 (17,5 min) | 24/24 |
@@ -102,24 +108,51 @@ Postopni vzorci, ki jih naloga omenja, pa se zaznajo zgodaj. Najšibkejša točk
 
 ## Preverba na neodvisnem javnem naboru: BGL
 
-Isti model in isti pragovi brez prilagajanja, na 7 mesecih logov superračunalnika Blue Gene/L
+Isti model in isti pragovi kot za plačilni sistem, na 7 mesecih logov superračunalnika Blue Gene/L
 (4,7 M vrstic, 15 s, 610 incidentov iz **pravih oznak** skrbnikov; oznake model ne vidi, služijo le za oceno).
 
 | | SeedWatch | naiven prag WARN/ERROR |
 |---|---|---|
-| Ujeti incidenti | **423 / 610 (69 %)** | 227 / 610 (37 %) |
-| Lažni alarmi | 0,8 / dan | 0,4 / dan |
-| „Čisti“ incidenti (≥ 6 h miru prej): ujeti | 175 / 248 (71 %) | – |
+| Ujeti incidenti | **547 / 610 (90 %)** | 227 / 610 (37 %) |
+| Lažni alarmi | 1,16 / dan | 0,39 / dan |
+| Samo druga časovna polovica (pri izbiri pravil je nismo gledali) | **274 / 288 (95 %)**, 0,75 / dan | – |
+| „Čisti“ incidenti (≥ 6 h miru prej): ujeti | 233 / 248 (94 %) | – |
 | „Čisti“ incidenti: OPAZUJ ≥ 10 min prej | 15 / 248 | – |
 
 * **Nivo laže tudi tam:** 507.000 vrstic FATAL ni alarm; nekateri FATAL/ERROR se ponavljajo kot cron (npr. „Ido packet timeout“ vsake 4 h).
 * **Napoved ≥ 10 min je redka (~6 %) tudi na BGL.** Večina okvar nastopi nenadoma, enako kot v plačilnem sistemu. Vrednost je v zgodnjem in razložljivem zaznavanju, ne v čarobni napovedi.
-* Edino pravilo, dodano po ogledu BGL: servisni posegi (`PrepareForService`, `EndServiceAction`) so marker
-  in med njimi se napake štejejo le s 30 %, enako kot deploy pri plačilnem sistemu. Zmanjša lažne alarme z 1,7 na 0,8 na dan.
+* **Nivo × redkost:** kritična predloga (FATAL/FAILURE), ki se pojavi redkeje kot 1× na 2 dni, sproži alarm takoj ob prvi vrstici
+  („kernel panic“, „Power deactivated“, „mmcs_server exited abnormally“). Pogost FATAL (šum) tega nikoli ne stori.
+  Dvigne zaznavo na BGL s 423 na 547; plačilnega sistema ne spremeni (tam ni nivoja CRITICAL).
+* Pravila, dodana po ogledu BGL (zato tudi ocena samo na drugi polovici): servisni posegi (`PrepareForService`, `EndServiceAction`) so marker
+  in med njimi se napake štejejo le s 30 %, enako kot deploy pri plačilnem sistemu; prag redkosti 1× na 2 dni.
+
+## Koliko doda vsak steber (ablacija)
+
+Isti incidenti in isto ocenjevanje, vsaka vrstica doda eno idejo (ujeti / vsi · lažni alarmi na dan):
+
+| | BGL | vit-2 | vit-3 |
+|---|---|---|---|
+| A naiven prag WARN+ERROR na minuto | 227/610 · 0,39 | 3/4 · 1,80 | 2/3 · 1,86 |
+| B model brez učenja šuma (vse napake = signal) | 459/610 · 1,62 | 4/4 · 2,40 | 3/3 · 3,35 |
+| C + šum iz ritma (plevel, marker, servisni poseg) | 419/610 · 0,67 | 4/4 · 2,00 | 3/3 · 0,56 |
+| D + šum kot senzor (tišina, utripi) | 423/610 · 0,80 | 4/4 · 2,00 | 3/3 · 0,56 |
+| E + nivo × redkost = celoten model | **547/610 · 1,16** | **4/4 · 2,00** | **3/3 · 0,56** |
+
+* **Učenje šuma (B → C)** zmanjša lažne alarme 2,4× (BGL) do 6× (vit-3).
+* **Nivo × redkost (D → E)** doda 124 ujetih incidentov na BGL.
+* **Tišina (C → D)** na teh incidentih skoraj ne doda – njena vrednost je pri postopnem upadu utripa (chaos: alarm mediano 17,5 min pred izpadom).
+
+## Kaj smo preverili in ne deluje (iskreno)
+
+* **Predznaki pred okvaro:** v uri pred „čistimi“ BGL incidenti je največji lift predloge 4,2 (pri 8/248 incidentih);
+  lokalna aktivnost iste omare je povišana le pri 16/248. Večina okvar je nenadnih – napovedati jih ne more nihče, ujamemo jih v prvi minuti.
+* **Invariante START↔FINISH, Active↔Inactive:** 86 parov, 0 zlomov – ob izpadu utihne vse hkrati, zato ne dajo signala.
 
 ## Datoteke
 
 `seedwatch/fields.py` hitro branje polj · `template.py` predloge in entitete · `aggregate.py` agregat na minuto in dedup ·
 `batch.py` vzporedni shardi · `profile.py` plevel/marker/seme · `labels.py` definicija „SYSTEM DOWN“ ·
-`predict.py` napovednik · `explain.py` kartice · `evaluate.py`, `chaos.py` evalvacija · `stream.py`, `server.py`, `dashboard/` demo · `llm.py` AI povzetek
+`predict.py` napovednik · `explain.py` kartice · `evaluate.py`, `chaos.py`, `ablation.py` evalvacija · `insights.py` ugotovitve ·
+`stream.py`, `server.py`, `dashboard/` demo · `llm.py` AI povzetek
 # hekaton

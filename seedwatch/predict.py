@@ -27,6 +27,7 @@ WATCH_RATIO = 0.5     # WATCH: early heads-up on the dashboard only, at half the
 LAT_STREAK = 6        # minutes a single link must stay slow (natural spikes are shorter)
 TREND_MIN_EVENTS = 4  # events in the last 10 min before a rise counts as a trend
 TREND_DIV = 2.0
+RARE_P = 1 / 2880     # a CRITICAL seed rarer than once in two days alerts on its first line
 SEVERE_RX = re.compile(r"FAILED|offline|time ?out|refused|unavailable|\bdown\b|\blost\b", re.I)
 
 
@@ -123,8 +124,15 @@ WEIGHTS = {"templates": 1.0, "volume": 1.0, "heartbeat": 1.0, "latency": 1.0, "u
 
 
 class Predictor:
-    def __init__(self, profile, threshold=THRESHOLD, consecutive=2, cooldown_min=30):
+    def __init__(self, profile, threshold=THRESHOLD, consecutive=2, cooldown_min=30, weights=None, rare=True):
         self.cls = {tid: p["class"] for tid, p in profile["tpl"].items()}
+        self.weights = weights or WEIGHTS
+        # level alone lies (most FATAL lines are noise); level x rarity does not
+        self.rare_on = rare
+        self.severe_level = {tid for tid, p in profile["tpl"].items()
+                             if p["class"] == "seed" and p["level"] == "CRITICAL"}
+        self._rare = []
+        self.last_fire = {}   # tid -> minute index of its last occurrence
         self.group = profile["groups"]
         # semantic prior: an already-anomalous seed that talks about failure weighs more
         self.severe = {tid: 1.5 for tid, p in profile["tpl"].items() if SEVERE_RX.search(p["template"])}
@@ -168,6 +176,7 @@ class Predictor:
             self.maintenance_until = t + 30 * 60
         in_maintenance = t <= self.maintenance_until
         group_score = {}
+        self._rare = []
         m = self.minute
         for tid in row["tpl"]:
             self.active[tid] = m
@@ -189,6 +198,12 @@ class Predictor:
                 st[4] = 0
             st[6] = m
             hist, p, usual, age, streak, counts, _ = st
+            if (c and self.rare_on and tid in self.severe_level and p <= RARE_P and not in_maintenance
+                    and not (restarting and age < 15)):   # never-seen counts too; start-up chatter does not
+                last = self.last_fire.get(tid)
+                self._rare.append({"tid": tid, "quiet_min": None if last is None else m - last})
+            if c:
+                self.last_fire[tid] = m
             hist.append(1 if c else 0)
             counts.append(c)
             k30 = sum(hist)
@@ -221,7 +236,12 @@ class Predictor:
                 if sc > group_score.get(g, (0, None))[0]:
                     group_score[g] = (sc, tid)
         top = sorted(group_score.values(), reverse=True)
-        return sum(x for x, _ in top), top[:5]
+        total = sum(x for x, _ in top)
+        if self._rare:   # rare + severe: alert on the first line, do not wait for a second minute
+            bonus = 2 * self.threshold
+            total += bonus
+            top = sorted([(bonus, r["tid"]) for r in self._rare] + top, reverse=True)
+        return total, top[:5]
 
     @staticmethod
     def _trend(counts, usual):
@@ -352,12 +372,13 @@ class Predictor:
         comps["unanswered"], ua = self._unanswered(ct_row)
         if self.minute < WARMUP_MIN:
             comps = {k: 0.0 for k in comps}
-        risk = sum(WEIGHTS[k] * v for k, v in comps.items())
+        risk = sum(self.weights[k] * v for k, v in comps.items())
+        rare = self._rare if self.minute >= WARMUP_MIN else []
 
         state = {"t": t, "risk": round(risk, 2), "comps": {k: round(v, 2) for k, v in comps.items()},
                  "top_tpl": [(round(s, 1), tid) for s, tid in top_tpl], "volume": vol,
                  "missing_hb": missing, "slow": slow, "unanswered": ua,
-                 "new_pods": new_pods if len(self.pods_seen) > len(new_pods) else []}
+                 "new_pods": new_pods if len(self.pods_seen) > len(new_pods) else [], "rare": rare}
         self.above = self.above + 1 if risk >= self.threshold else 0
         alert = None
         if self.above >= self.consecutive or risk >= 2 * self.threshold:
@@ -368,7 +389,7 @@ class Predictor:
                     ordered = sorted(state["top_tpl"], key=lambda x: x[1] != lead_tid)
                     alert = {"t": t, "risk": state["risk"], "comps": state["comps"], "cause": cause,
                              "top_tpl": ordered, "missing_hb": missing, "slow": slow,
-                             "unanswered": ua, "volume": vol}
+                             "unanswered": ua, "volume": vol, "rare": rare}
         state["alert"] = alert
         watch = None
         wth = WATCH_RATIO * self.threshold
@@ -381,7 +402,7 @@ class Predictor:
                     ordered = sorted(state["top_tpl"], key=lambda x: x[1] != lead_tid)
                     watch = {"t": t, "risk": state["risk"], "comps": state["comps"], "cause": cause,
                              "top_tpl": ordered, "missing_hb": missing, "slow": slow,
-                             "unanswered": ua, "volume": vol}
+                             "unanswered": ua, "volume": vol, "rare": rare}
         state["watch"] = watch
         state["level"] = "alarm" if risk >= self.threshold else ("watch" if risk >= wth else "ok")
         return state

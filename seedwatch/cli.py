@@ -26,12 +26,34 @@ def main(argv=None):
     v.add_argument("--host", default="127.0.0.1")
     v.add_argument("--port", type=int, default=8765)
 
+    ab = sub.add_parser("ablation", help="how much each pillar adds (same incidents, same scoring)")
+    ab.add_argument("--out", default="out")
+
+    ins = sub.add_parser("insights", help="numbers behind 'what we learned' (noise, predictability, invariants)")
+    ins.add_argument("--out", default="out")
+    ins.add_argument("--raw-dir", default=None, help="folder with BGL.log for rack-local precursor analysis")
+
     args = ap.parse_args(argv)
     if args.cmd == "batch":
         from .batch import run_batch
         stats = run_batch(args.files, args.out, args.workers, args.shard_mb,
                           log=lambda s: print(s, file=sys.stderr, flush=True), stats_name=args.stats_name)
         print(json.dumps(stats, indent=2))
+    elif args.cmd == "ablation":
+        from .ablation import ablate_all
+        doc = ablate_all(args.out, log=lambda m: print(m, file=sys.stderr, flush=True))
+        envs = list(doc["results"])
+        print(f"{'':58s}" + "".join(f"{e:>22s}" for e in envs))
+        for c in doc["configs"]:
+            cells = []
+            for e in envs:
+                r = doc["results"][e][c["id"]]
+                cells.append(f"{r['caught']:>4}/{r['outages']:<4} {r['fa_per_day']:>5.2f} FA/d")
+            print(f"{c['id']} {c['label']:55s}" + "".join(f"{x:>22s}" for x in cells))
+    elif args.cmd == "insights":
+        from .insights import collect
+        doc = collect(args.out, args.raw_dir, log=lambda m: print(m, file=sys.stderr, flush=True))
+        print(json.dumps(doc, indent=2, ensure_ascii=False))
     elif args.cmd == "serve":
         from .server import serve
         serve(args.out, args.raw_dir, args.host, args.port)
@@ -52,6 +74,7 @@ def main(argv=None):
                       f"false alarms {sm['fa_per_day']}/day, naive {sm['naive']['caught']}/{sm['naive']['outages']} "
                       f"at {sm['naive']['fa_per_day']}/day")
                 print(f"   isolated (>=6 h quiet before): {sm['isolated']}")
+                print(f"   second half only: {sm['test_half']}")
                 continue
             for inc in r["incidents"]:
                 lead = "" if inc["lead_min"] is None else f"{inc['lead_min']:+.0f} min"
