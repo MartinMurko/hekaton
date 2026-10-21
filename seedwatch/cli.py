@@ -26,8 +26,34 @@ def main(argv=None):
     v.add_argument("--host", default="127.0.0.1")
     v.add_argument("--port", type=int, default=8765)
 
+    index = sub.add_parser('index', help='prepare the persistent log explorer store once')
+    index.add_argument('--out', default='out')
+    index.add_argument('--raw-dir', default='..')
+    index.add_argument('--env', default=None)
+
     args = ap.parse_args(argv)
-    if args.cmd == "batch":
+    if args.cmd == 'index':
+        from pathlib import Path
+        import time
+        from .explorer import Explorer
+        explorer = Explorer(args.out, sorted(Path(args.raw_dir).glob('vp-logs-*.txt')), indexed=True)
+        try:
+            envs = [args.env] if args.env else sorted(explorer.raw)
+            for env in envs:
+                store = explorer.store(env)
+                if store is None:
+                    raise SystemExit('No operational source logs for '+env)
+                while True:
+                    status = store.ensure()
+                    print(json.dumps({'env': env, **status}), flush=True)
+                    if status['error']:
+                        raise SystemExit(status['error'])
+                    if status['ready']:
+                        break
+                    time.sleep(2)
+        finally:
+            explorer.close()
+    elif args.cmd == "batch":
         from .batch import run_batch
         stats = run_batch(args.files, args.out, args.workers, args.shard_mb,
                           log=lambda s: print(s, file=sys.stderr, flush=True), stats_name=args.stats_name)

@@ -1,2 +1,4 @@
 orjson>=3.10
+duckdb>=1.4,<2
+pyarrow>=14
 anthropic>=1.16  # optional: AI alert summaries
