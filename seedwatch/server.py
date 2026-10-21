@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 import orjson
 
 from .llm import Summarizer
+from .explorer import Explorer
 from .stream import Replay
 
 ROOT = Path(__file__).resolve().parent.parent / "dashboard"
@@ -70,6 +71,7 @@ def overview(out, env):
 
 def make_handler(out, raw_files):
     summarizer = Summarizer(Path(out) / "llm_cache.json")
+    explorer = Explorer(out, raw_files, indexed=True)
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -83,11 +85,27 @@ def make_handler(out, raw_files):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
 
         def do_GET(self):
             u = urlparse(self.path)
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
+            if u.path in ("/api/workspace", "/api/logs", "/api/source", "/api/pattern-rules"):
+                try:
+                    if u.path == "/api/workspace":
+                        result = explorer.workspace(q.get("env", "vit-3"))
+                    elif u.path == "/api/logs":
+                        result = explorer.query(q)
+                    elif u.path == "/api/pattern-rules":
+                        result = explorer.list_rules(q.get("env", "vit-3"))
+                    else:
+                        result = explorer.source(q)
+                    return self._send(200, orjson.dumps(result), "application/json")
+                except (ValueError, KeyError) as e:
+                    return self._send(400, orjson.dumps({"error": str(e)}), "application/json")
             if u.path == "/api/overview":
                 return self._send(200, orjson.dumps(overview(out, q.get("env", "vit-3"))), "application/json")
             if u.path == "/api/replay":
@@ -100,6 +118,24 @@ def make_handler(out, raw_files):
             return self._send(200, f.read_bytes(), ctype)
 
         def do_POST(self):
+            path = urlparse(self.path).path
+            if path in ("/api/pattern-rules", "/api/pattern-rules/preview"):
+                try:
+                    n = int(self.headers.get("Content-Length", 0))
+                    if not 0 < n <= 64000 or self.headers.get_content_type() != "application/json":
+                        self.close_connection = True
+                        raise ValueError("Send a JSON grouping rule up to 64 KB")
+                    origin = self.headers.get("Origin")
+                    if origin and origin != "http://"+self.headers.get("Host", ""):
+                        self.close_connection = True
+                        raise ValueError("Open the dashboard on this server to change grouping rules")
+                    request = orjson.loads(self.rfile.read(n))
+                    if not isinstance(request, dict):
+                        raise ValueError("Provide a JSON object")
+                    result = explorer.preview_rule(request) if path.endswith("/preview") else explorer.update_rules(request)
+                    return self._send(200, orjson.dumps(result), "application/json")
+                except (ValueError, TypeError, KeyError) as e:
+                    return self._send(400, orjson.dumps({"error": str(e)}), "application/json")
             if urlparse(self.path).path != "/api/explain":
                 return self._send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length", 0))
@@ -131,6 +167,7 @@ def make_handler(out, raw_files):
                 pass
             self.close_connection = True
 
+    Handler.explorer = explorer
     return Handler
 
 
@@ -142,4 +179,8 @@ def serve(out, raw_dir, host="127.0.0.1", port=8765):
         raise SystemExit(f"Port {port} is not available ({e.strerror}). Another seedwatch server is "
                          f"probably running: stop it (pkill -f 'seedwatch.cli serve') or use --port {port + 1}.")
     print(json.dumps({"url": f"http://{host}:{port}/", "raw_files": [Path(p).name for p in raw_files]}))
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.server_close()
+        httpd.RequestHandlerClass.explorer.close()

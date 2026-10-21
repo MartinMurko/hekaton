@@ -1,548 +1,77 @@
 <!doctype html>
-<html lang="sl">
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SeedWatch</title>
-<script src="vendor/chart.umd.min.js"></script>
-<style>
-:root {
-  color-scheme: light;
-  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
-  --series-1: #2a78d6; --series-2: #eb6834; --weed: #c3c2b7; --band: rgba(208,59,59,0.10);
-  --critical: #d03b3b; --warning: #fab219; --good: #0ca30c; --good-text: #006300;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
-    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-    --series-1: #3987e5; --series-2: #d95926; --weed: #5b5a56; --band: rgba(230,103,103,0.16);
-    --good-text: #0ca30c;
-  }
-}
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
-  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
-  --series-1: #3987e5; --series-2: #d95926; --weed: #5b5a56; --band: rgba(230,103,103,0.16);
-  --good-text: #0ca30c;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--page); color: var(--ink);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-header { padding: 16px 24px 8px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-header h1 { margin: 0; font-size: 22px; font-weight: 650; }
-header .sub { color: var(--ink-2); }
-.controls { padding: 8px 24px 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.controls select, .controls button { font: inherit; padding: 6px 10px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
-.controls button.primary { background: var(--series-1); color: #fff; border-color: transparent; font-weight: 600; }
-.tabs { display: flex; gap: 4px; margin-left: auto; }
-.tabs button.active { background: var(--ink); color: var(--surface); }
-.clock { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 190px; }
-main { padding: 0 24px 24px; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
-.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; }
-.tile .label { color: var(--ink-2); font-size: 12px; }
-.tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
-.tile .note { color: var(--muted); font-size: 12px; }
-.meter { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--series-1) 18%, transparent); margin-top: 6px; overflow: hidden; }
-.meter > div { height: 100%; background: var(--series-1); width: 0; transition: width .3s; }
-.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 12px; }
-@media (max-width: 1100px) { .grid2 { grid-template-columns: 1fr; } }
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; }
-.card h2 { font-size: 14px; margin: 0 0 6px; font-weight: 600; }
-.card .hint { color: var(--muted); font-size: 12px; margin: -4px 0 6px; }
-.chart { position: relative; height: 190px; }
-.chart.small { height: 130px; }
-.legend { display: flex; gap: 14px; color: var(--ink-2); font-size: 12px; margin-bottom: 4px; flex-wrap: wrap; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-.legend i.line { height: 2px; width: 14px; border-radius: 1px; vertical-align: 3px; }
-.alerts { max-height: 640px; overflow-y: auto; }
-.alert { border: 1px solid var(--border); border-left: 4px solid var(--critical); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
-.alert.watch { border-left-color: var(--warning); }
-.alert .title { font-weight: 650; }
-.lvl { font-size: 11px; font-weight: 700; letter-spacing: .03em; padding: 1px 6px; border-radius: 4px; margin-right: 6px; vertical-align: 1px; }
-.lvl.alarm { background: var(--critical); color: #fff; }
-.lvl.watch { background: var(--warning); color: #0b0b0b; }
-.alert .meta { color: var(--ink-2); font-size: 12px; margin: 2px 0 6px; font-variant-numeric: tabular-nums; }
-.alert .row { margin: 3px 0; font-size: 13px; }
-.alert .row b { color: var(--ink-2); font-weight: 600; display: inline-block; min-width: 76px; }
-.alert ul { margin: 2px 0 2px 0; padding-left: 18px; }
-.alert .follow { color: var(--ink-2); font-size: 12px; border-top: 1px solid var(--grid); margin-top: 6px; padding-top: 4px; }
-.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-2); }
-.feed { font-size: 12px; max-height: 260px; overflow-y: auto; }
-.feed div { padding: 3px 0; border-bottom: 1px solid var(--grid); }
-.feed .cnt { font-weight: 600; font-variant-numeric: tabular-nums; display: inline-block; min-width: 42px; }
-.feed .lg { color: var(--ink-2); }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
-th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
-td.num { font-variant-numeric: tabular-nums; text-align: right; }
-.cls { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
-.empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
-.ok { color: var(--good-text); font-weight: 600; }
-.hidden { display: none; }
-</style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SeedWatch · Log investigation</title>
+<link rel="stylesheet" href="/style.css">
+<script src="/vendor/chart.umd.min.js" defer></script><script src="/app.js" defer></script><script src="/rules.js" defer></script>
 </head>
 <body>
-<header>
-  <h1>SeedWatch</h1>
-  <div class="sub">Plevel ali seme? Pretočno čiščenje logov in napoved izpadov · Vynamic Payments (vit-2, vit-3) + javni nabor BGL</div>
+<header class="topbar">
+  <a class="brand" href="/" aria-label="SeedWatch home"><span class="brand-icon">s</span>SeedWatch</a><span class="product-label">Log investigation</span>
+  <div class="context"><label class="sr-only" for="environment">Environment</label><select id="environment"><option>vit-3</option><option>vit-2</option></select><span class="status" id="mode-status">Historical data</span></div>
 </header>
-<div class="controls">
-  <select id="scenario" aria-label="Scenarij"></select>
-  <select id="speed" aria-label="Hitrost replaya">
-    <option value="20">20× hitreje</option>
-    <option value="40" selected>40× hitreje</option>
-    <option value="90">90× hitreje</option>
-    <option value="300">300× hitreje</option>
-  </select>
-  <button id="go" class="primary">▶ Predvajaj</button>
-  <span class="clock" id="clock">—</span>
-  <div class="tabs">
-    <button id="tab-live" class="active">Živo</button>
-    <button id="tab-overview">Pregled 5 dni</button>
-  </div>
-</div>
-
 <main>
-<section id="live">
-  <div class="tiles">
-    <div class="tile"><div class="label">Prebranih vrstic</div><div class="value" id="k-lines">0</div><div class="note">vse ravni, surovi Kafka dump</div></div>
-    <div class="tile"><div class="label">WARN / ERROR</div><div class="value" id="k-warn">0</div><div class="note">kar bi pokazal navaden filter</div></div>
-    <div class="tile"><div class="label">Seme (po čiščenju)</div><div class="value" id="k-seed">0</div><div class="note" id="k-seed-note">plevel in markerji izločeni</div></div>
-    <div class="tile"><div class="label">Dogodkov po deduplikaciji</div><div class="value" id="k-events">0</div><div class="note">predloga × minuta × pod, s števcem</div></div>
-    <div class="tile"><div class="label">Alarmi</div><div class="value" id="k-alerts">0</div><div class="note" id="k-alert-note">—</div></div>
-    <div class="tile"><div class="label">RAM procesa</div><div class="value" id="k-rss">—</div><div class="meter"><div id="k-rss-bar"></div></div><div class="note">omejitev 512 MB</div></div>
-  </div>
-  <div class="grid2">
-    <div>
-      <div class="card">
-        <h2>Tveganje izpada</h2>
-        <div class="legend"><span><i class="line" style="background:var(--series-1)"></i>tveganje</span><span><i class="line" style="background:var(--muted)"></i>pragova OPAZUJ / ALARM</span><span><i style="background:var(--warning)"></i>▲ opazuj</span><span><i style="background:var(--critical)"></i>▲ alarm</span><span><i style="background:var(--band);border:1px solid var(--critical)"></i>dejanski izpad (samodejna oznaka)</span></div>
-        <div class="chart"><canvas id="c-risk"></canvas></div>
-      </div>
-      <div class="card">
-        <h2>WARN/ERROR vrstice na minuto: plevel ali seme</h2>
-        <div class="legend"><span><i style="background:var(--weed)"></i>plevel (ritmičen šum)</span><span><i style="background:var(--series-1)"></i>marker (zagon poda)</span><span><i style="background:var(--series-2)"></i>seme (signal)</span></div>
-        <div class="chart small"><canvas id="c-cls"></canvas></div>
-      </div>
-      <div class="card">
-        <h2>Volumen vseh logov na minuto</h2>
-        <div class="hint">Utrip sistema: tišina je najmočnejši signal izpada.</div>
-        <div class="chart small"><canvas id="c-vol"></canvas></div>
+  <section class="page-heading"><div><h1>Log explorer</h1><p id="coverage-heading">Operational logs · Times in UTC</p></div><button id="run-toggle" class="quiet" aria-expanded="false" aria-controls="run-details">Run details <span aria-hidden="true">▾</span></button></section>
+  <section id="run-details" class="panel run-details" hidden></section>
+  <div id="global-error" class="notice error" role="alert" hidden></div>
+  <section class="rangebar" aria-label="Time range controls">
+    <button id="range-back" class="quiet" title="Restore your previous time selection" hidden>← Previous range</button>
+    <div class="time-picker-wrap"><button id="time-picker-toggle" class="quiet time-picker-toggle" aria-expanded="false" aria-controls="time-picker"><span aria-hidden="true">◷</span> <span id="time-picker-label">Loading time range…</span> <span class="timezone">UTC</span> ▾</button>
+      <div id="time-picker" class="time-picker panel" role="dialog" aria-label="Select time range" hidden>
+        <form id="time-form" class="absolute-range"><h3>Absolute time range <span class="muted small">UTC</span></h3><label>From<input type="datetime-local" id="range-start" aria-label="From (UTC)" required></label><label>To<input type="datetime-local" id="range-end" aria-label="To (UTC)" required></label><p id="available-range" class="small muted"></p><button type="submit" class="primary">Apply time range</button></form>
+        <div class="quick-ranges"><h3>Quick ranges</h3><button data-range="900">Last 15 minutes</button><button data-range="3600">Last 1 hour</button><button data-range="21600">Last 6 hours</button><button data-range="86400">Last 24 hours</button><button data-range="all">All recorded data</button><p class="small muted">Quick ranges end at the latest recorded time, or the replay cursor.</p><div class="shift-range"><h3>Move this range</h3><div><button id="pan-left" type="button" class="quiet">← Earlier</button><button id="pan-right" type="button" class="quiet">Later →</button></div><p id="shift-caption" class="small muted"></p></div><div id="recent-ranges"></div></div>
       </div>
     </div>
-    <div>
-      <div class="card">
-        <h2>Alarmi</h2>
-        <div id="alerts" class="alerts"><div class="empty">Še ni alarmov.</div></div>
-      </div>
-      <div class="card">
-        <h2>Seme v zadnjih minutah</h2>
-        <div id="feed" class="feed"><div class="empty">Čakam na podatke …</div></div>
-      </div>
+    <button id="zoom-out" class="quiet" title="Double the visible time range">Zoom out</button>
+    <div class="replay-controls"><label class="sr-only" for="speed">Replay speed</label><select id="speed"><option value="1">1 min / sec</option><option value="5" selected>5 min / sec</option><option value="10">10 min / sec</option></select><button id="replay" class="primary">▶ Replay range</button><button id="exit-replay" class="quiet" hidden>Exit replay</button></div>
+  </section>
+  <div class="activity-layout">
+    <section class="panel timeline-panel" aria-labelledby="activity-title">
+      <div class="panel-heading"><div><h2 id="activity-title">Activity</h2><span class="muted small">Environment-wide anomaly score</span></div><span id="window-caption" class="small muted"></span></div>
+      <div class="chart-label"><span><i class="dot blue"></i> Anomaly score</span><span class="muted" id="threshold-label"></span></div>
+      <div class="chart score-chart"><canvas id="score-chart" aria-label="Anomaly score timeline. Use UTC range fields to select an interval." role="img"></canvas></div>
+      <div class="chart-label volume-label"><span><i class="dot gray"></i> Operational records / minute</span><span id="cursor-caption" class="muted"></span></div>
+      <div class="chart volume-chart"><canvas id="volume-chart" aria-label="Log volume timeline" role="img"></canvas></div>
+      <div class="timeline-foot"><span>Drag to zoom and filter logs · double-click to zoom out</span><button id="all-data" class="link-button">All recorded data</button></div>
+    </section>
+    <aside class="panel alerts-panel" aria-labelledby="alerts-title"><div class="panel-heading"><h2 id="alerts-title">Alerts <span id="alert-count" class="count-badge">0</span></h2><span class="small muted">Newest first</span></div><div id="alerts" class="alert-list"></div></aside>
+  </div>
+  <section class="panel logs-panel" aria-labelledby="logs-title">
+    <div class="logs-heading"><div><h2 id="logs-title">Logs <span id="selection-kind" class="selection-badge" hidden>Selected interval</span></h2><p id="log-scope" class="muted small">Loading recorded data…</p></div><button id="manage-rules" class="quiet">Grouping rules</button></div>
+    <div id="alert-detail" class="alert-detail" hidden></div>
+    <div class="filterbar">
+      <label class="search"><span aria-hidden="true">⌕</span><input type="search" id="search" placeholder="Search messages, loggers or instances…" aria-label="Search logs"></label>
+      <label class="filter-control severity-control" for="min-level"><span>Minimum level</span><select id="min-level" aria-label="Minimum level" title="Includes the selected severity and higher"><option value="">All levels</option><option value="INFO" selected>INFO</option><option value="WARN">WARN</option><option value="ERROR">ERROR</option></select></label>
+      <label class="filter-control" for="service"><span>Service</span><select id="service"><option value="">All services</option></select></label>
+      <div class="view-switch" role="group" aria-label="Log presentation"><button id="grouped" aria-pressed="true" title="Group repeated messages across the selected range">Grouped</button><button id="records" aria-pressed="false" title="Show each original log entry">Individual</button></div>
+      <button id="reset-filters" class="quiet reset-filters" title="Reset search, service and minimum level; keep hidden patterns" hidden>Reset filters</button>
     </div>
-  </div>
-</section>
-
-<section id="overview" class="hidden">
-  <div class="controls" style="padding-left:0">
-    <select id="ov-env" aria-label="Okolje"><option value="vit-3">vit-3</option><option value="vit-2">vit-2</option></select>
-  </div>
-  <div class="tiles" id="ov-tiles"></div>
-  <div class="card">
-    <h2>Tveganje skozi celotno obdobje</h2>
-    <div class="legend"><span><i class="line" style="background:var(--series-1)"></i>tveganje</span><span><i class="line" style="background:var(--muted)"></i>pragova OPAZUJ / ALARM</span><span><i style="background:var(--critical)"></i>▲ alarm</span><span><i style="background:var(--band);border:1px solid var(--critical)"></i>dejanski izpad</span></div>
-    <div class="chart"><canvas id="c-ov"></canvas></div>
-  </div>
-  <div class="grid2">
-    <div class="card">
-      <h2 id="ov-inc-title">Incidenti in ali smo jih ujeli</h2>
-      <table><thead><tr><th>Incident</th><th>Začetek (UTC)</th><th>Vrsta</th><th>Izid (ALARM)</th><th class="num">Vodstvo</th><th class="num">OPAZUJ</th><th>Alarm</th></tr></thead><tbody id="ov-inc"></tbody></table>
-      <div id="ov-chaos-box">
-      <h2 style="margin-top:18px">Chaos injection: 30 min postopne degradacije, nato izpad</h2>
-      <div class="hint">Sintetični scenariji na resničnem ozadju (po 12 na okolje), isti model in pragovi.</div>
-      <table><thead><tr><th>Scenarij</th><th class="num">ALARM pred izpadom</th><th class="num">Mediana</th><th class="num">OPAZUJ ≥10 min</th><th class="num">Mediana</th></tr></thead><tbody id="ov-chaos"></tbody></table>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Plevel ali seme – kako se je odločil model</h2>
-      <div class="hint">Razred določa obnašanje (ritem, cron, zagon poda), ne nivo ali beseda „error“.</div>
-      <table><thead><tr><th>Razred</th><th>Predloga</th><th class="num">Vrstic</th></tr></thead><tbody id="ov-cls"></tbody></table>
-    </div>
-  </div>
-</section>
+    <div id="pattern-filters" class="pattern-filters" hidden></div>
+    <div id="scan-status" class="scan-status" hidden><span id="scan-caption"></span><progress id="scan-progress" max="1" value="0"></progress><button id="scan-toggle" class="link-button">Pause scan</button></div>
+    <div class="results-meta"><span id="result-count" role="status" aria-live="polite">Loading messages…</span><span id="filter-scope">Filters apply to logs only</span></div>
+    <div id="log-notice" class="notice" role="status" hidden></div>
+    <div class="table-wrap"><table><colgroup><col class="expand-col"><col class="time-col"><col class="level-col"><col class="service-col"><col><col class="count-col" id="occurrence-col"><col class="action-col"></colgroup><thead><tr><th><span class="sr-only">Expand</span></th><th>Last seen <span class="muted">UTC</span></th><th>Level</th><th>Service / instance</th><th>Message</th><th class="numeric" id="count-heading">Occurrences</th><th><span class="sr-only">Pattern actions</span></th></tr></thead><tbody id="log-rows"></tbody></table></div>
+    <div id="empty-state" class="empty-state" hidden></div>
+    <footer class="table-footer"><span id="page-caption" class="muted small"></span><div><button id="previous-page" class="quiet">← Previous</button><button id="next-page" class="quiet">Next →</button></div></footer>
+  </section>
+  <footer class="workspace-foot">SeedWatch <span>Historical log investigation · scores indicate unusual activity, not outage probability.</span></footer>
 </main>
-
-<script>
-const $ = (id) => document.getElementById(id);
-const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const fmt = new Intl.NumberFormat("sl-SI");
-const hhmm = (t) => new Date(t * 1000).toISOString().slice(11, 16);
-const dayhm = (t) => { const d = new Date(t * 1000).toISOString(); return d.slice(8, 10) + "." + d.slice(5, 7) + ". " + d.slice(11, 16); };
-const CLS_LABEL = { weed: "plevel", marker: "marker", seed: "seme" };
-const KIND_LABEL = { silence: "tišina", failure: "komponenta FAILED", link_down: "hosti ne odgovarjajo", avalanche: "plaz napak", hb_lost: "izgubljen utrip", restart: "restart poda" };
-const OUTCOME = { predicted: "napovedano", detected: "zaznano", missed: "zgrešeno" };
-
-// ---- chart plumbing -------------------------------------------------------
-const bandPlugin = {
-  id: "bands",
-  beforeDatasetsDraw(chart, _a, opts) {
-    const { ctx, chartArea: a, scales: { x, y } } = chart;
-    ctx.save();
-    for (const b of opts.bands || []) {
-      const x0 = Math.max(x.getPixelForValue(b[0]), a.left), x1 = Math.min(x.getPixelForValue(b[1]), a.right);
-      if (x1 <= a.left || x0 >= a.right) continue;
-      ctx.fillStyle = css("--band");
-      ctx.fillRect(x0, a.top, Math.max(x1 - x0, 2), a.bottom - a.top);
-      ctx.fillStyle = css("--critical"); ctx.fillRect(x0, a.top, 1, a.bottom - a.top);
-    }
-    const lines = [];
-    if (opts.threshold != null) lines.push(["alarm " + opts.threshold, opts.threshold]);
-    if (opts.watch != null) lines.push(["opazuj " + opts.watch, opts.watch]);
-    for (const [label, v] of y ? lines : []) {
-      const py = y.getPixelForValue(v);
-      if (py > a.top && py < a.bottom) {
-        ctx.strokeStyle = css("--muted"); ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(a.left, py); ctx.lineTo(a.right, py); ctx.stroke();
-        ctx.setLineDash([]); ctx.fillStyle = css("--muted"); ctx.font = "11px system-ui";
-        ctx.fillText(label, a.right - ctx.measureText(label).width - 4, py - 4);
-      }
-    }
-    ctx.restore();
-  },
-  afterDraw(chart) {
-    const t = chart.tooltip;
-    if (!t || !t.getActiveElements().length) return;
-    const { ctx, chartArea: a } = chart;
-    const px = t.getActiveElements()[0].element.x;
-    ctx.save(); ctx.strokeStyle = css("--axis"); ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); ctx.restore();
-  },
-};
-Chart.register(bandPlugin);
-
-function baseOptions(ylabel, opts = {}) {
-  const muted = css("--muted"), grid = css("--grid");
-  return {
-    animation: false, responsive: true, maintainAspectRatio: false, parsing: false, normalized: true,
-    interaction: { mode: "index", intersect: false, axis: "x" },
-    plugins: {
-      legend: { display: false },
-      bands: { bands: [], threshold: null },
-      tooltip: {
-        backgroundColor: css("--surface"), titleColor: css("--ink"), bodyColor: css("--ink"),
-        borderColor: css("--axis"), borderWidth: 1, padding: 8, boxWidth: 12, boxHeight: 2,
-        callbacks: { title: (it) => it.length ? dayhm(it[0].parsed.x) + " UTC" : "" },
-      },
-    },
-    scales: {
-      x: { type: "linear", grid: { color: grid, drawTicks: false }, border: { color: css("--axis") },
-           ticks: { color: muted, maxRotation: 0, autoSkipPadding: 24, callback: (v) => opts.days ? dayhm(v) : hhmm(v) } },
-      y: { beginAtZero: true, grid: { color: grid }, border: { display: false },
-           ticks: { color: muted, maxTicksLimit: 5, callback: (v) => v >= 1000 ? (v / 1000) + "K" : v },
-           title: { display: !!ylabel, text: ylabel, color: muted, font: { size: 11 } }, ...(opts.y || {}) },
-    },
-  };
-}
-
-function lineDataset(label, color) {
-  return { label, data: [], borderColor: color, backgroundColor: color + "1a", borderWidth: 2, pointRadius: 0,
-           pointHoverRadius: 4, fill: true, tension: 0, borderJoinStyle: "round", borderCapStyle: "round" };
-}
-function alertDataset() {
-  return { label: "alarm", type: "scatter", data: [], pointStyle: "triangle", pointRadius: 7, pointHoverRadius: 9,
-           backgroundColor: css("--critical"), borderColor: css("--surface"), borderWidth: 2 };
-}
-
-let riskChart, clsChart, volChart, ovChart;
-function makeLiveCharts() {
-  for (const c of [riskChart, clsChart, volChart]) c && c.destroy();
-  const watchDs = alertDataset(); watchDs.label = "opazuj"; watchDs.backgroundColor = css("--warning");
-  riskChart = new Chart($("c-risk"), { type: "line", options: baseOptions("tveganje", { y: { suggestedMax: 30 } }),
-    data: { datasets: [lineDataset("tveganje", css("--series-1")), alertDataset(), watchDs] } });
-  const stacked = baseOptions("vrstic/min");
-  stacked.scales.x.stacked = true; stacked.scales.y.stacked = true;
-  const bar = (label, color) => ({ label, type: "bar", data: [], backgroundColor: color, borderColor: css("--surface"),
-                                   borderWidth: { top: 2 }, borderSkipped: "bottom", barPercentage: 1, categoryPercentage: 0.8, maxBarThickness: 24 });
-  clsChart = new Chart($("c-cls"), { type: "bar", options: stacked,
-    data: { datasets: [bar("plevel", css("--weed")), bar("marker", css("--series-1")), bar("seme", css("--series-2"))] } });
-  volChart = new Chart($("c-vol"), { type: "line", options: baseOptions("vrstic/min"),
-    data: { datasets: [lineDataset("volumen", css("--ink-2"))] } });
-}
-
-// ---- live replay ----------------------------------------------------------
-let source = null, scenarios = [], alertGroups = [];
-function setText(id, v) { $(id).textContent = v; }
-
-function addFeed(t, events) {
-  const feed = $("feed");
-  if (feed.firstChild && feed.firstChild.classList && feed.firstChild.classList.contains("empty")) feed.textContent = "";
-  for (const e of events) {
-    const div = document.createElement("div");
-    const cnt = document.createElement("span"); cnt.className = "cnt"; cnt.textContent = "×" + e.count;
-    const when = document.createElement("span"); when.className = "lg"; when.textContent = hhmm(t) + " " + e.logger.split(".").slice(-1)[0] + " · " + e.pod + " — ";
-    const msg = document.createElement("span"); msg.textContent = e.msg;
-    div.append(cnt, when, msg);
-    feed.prepend(div);
-  }
-  while (feed.childNodes.length > 60) feed.removeChild(feed.lastChild);
-}
-
-function renderCard(c, container) {
-  const el = document.createElement("div"); el.className = "alert" + (c.level === "watch" ? " watch" : "");
-  const title = document.createElement("div"); title.className = "title";
-  const lvl = document.createElement("span"); lvl.className = "lvl " + (c.level || "alarm");
-  lvl.textContent = c.level === "watch" ? "OPAZUJ" : "ALARM";
-  title.append(lvl, document.createTextNode(c.title));
-  const meta = document.createElement("div"); meta.className = "meta";
-  meta.textContent = `${c.env} · ${c.time} · tveganje ${Math.round(c.risk)} · zaupanje ${Math.round(c.confidence * 100)} %`;
-  el.append(title, meta);
-  const row = (label, content) => {
-    const r = document.createElement("div"); r.className = "row";
-    const b = document.createElement("b"); b.textContent = label; r.append(b);
-    if (Array.isArray(content)) {
-      const ul = document.createElement("ul");
-      for (const x of content) { const li = document.createElement("li"); li.textContent = x; ul.append(li); }
-      r.append(ul);
-    } else r.append(document.createTextNode(content));
-    el.append(r);
-  };
-  if (c.where && c.where.length) row("KJE", c.where.slice(0, 4));
-  if (c.why && c.why.length) row("ZAKAJ", c.why.slice(0, 4));
-  row("UKREP", c.action);
-  if (c.similar && c.similar.length) row("PODOBNO", c.similar.join(", "));
-  const follow = document.createElement("div"); follow.className = "follow hidden"; el.append(follow);
-  container.prepend(el);
-  if (c.level !== "watch") {   // plain-language summary (Claude, or a template offline)
-    const r = document.createElement("div"); r.className = "row";
-    const b = document.createElement("b"); b.textContent = "POVZETEK"; r.append(b);
-    const txt = document.createElement("span"); txt.textContent = "…"; r.append(txt);
-    el.insertBefore(r, el.children[2]);
-    fetch("/api/explain", { method: "POST", body: JSON.stringify(c) }).then((x) => x.json()).then((res) => {
-      if (res.source !== "claude") { r.remove(); return; }   // offline template would only repeat the card
-      txt.textContent = res.summary + " ";
-      const badge = document.createElement("span"); badge.className = "badge";
-      badge.textContent = res.source === "claude" ? "AI · Claude" : "predloga";
-      r.append(badge);
-    }).catch(() => r.remove());
-  }
-  return el;
-}
-
-function onAlert(card) {
-  const box = $("alerts");
-  if (box.firstChild && box.firstChild.classList.contains("empty")) box.textContent = "";
-  const last = alertGroups[alertGroups.length - 1];
-  const level = card.level || "alarm";
-  if (last && card.t - last.t1 <= 20 * 60 && !(last.level === "watch" && level === "alarm")) {
-    last.t1 = card.t;   // same unfolding incident: append as a follow-up line
-    const f = last.el.querySelector(".follow"); f.classList.remove("hidden");
-    const line = document.createElement("div");
-    line.textContent = `${hhmm(card.t)} + ${level === "watch" ? "opazuj" : "ALARM"}: ${card.title} (tveganje ${Math.round(card.risk)})`;
-    f.append(line);
-  } else if (last && last.level === "watch" && level === "alarm" && card.t - last.t1 <= 20 * 60) {
-    last.el.remove();   // escalation: the heads-up becomes an alarm, keep the history
-    const el = renderCard(card, box);
-    const f = el.querySelector(".follow"); f.classList.remove("hidden");
-    f.textContent = `Prvo opozorilo (OPAZUJ) ob ${hhmm(last.t0)} – ${Math.round((card.t - last.t0) / 60)} min pred alarmom.`;
-    Object.assign(last, { t1: card.t, el, level: "alarm" });
-  } else {
-    alertGroups.push({ t0: card.t, t1: card.t, el: renderCard(card, box), level });
-  }
-}
-
-function start() {
-  if (source) { source.close(); source = null; $("go").textContent = "▶ Predvajaj"; return; }
-  const sc = scenarios[$("scenario").value];
-  makeLiveCharts(); alertGroups = [];
-  $("alerts").innerHTML = '<div class="empty">Še ni alarmov.</div>';
-  $("feed").innerHTML = '<div class="empty">Čakam na podatke …</div>';
-  for (const id of ["k-lines", "k-warn", "k-seed", "k-events", "k-alerts"]) setText(id, "0");
-  setText("k-alert-note", "—");
-  const url = `/api/replay?env=${sc.env}&start=${sc.start}&minutes=${sc.minutes}&speed=${$("speed").value}`;
-  source = new EventSource(url);
-  $("go").textContent = "■ Ustavi";
-  let firstAlert = null, incidentStart = null;
-  source.onmessage = (ev) => {
-    const m = JSON.parse(ev.data);
-    if (m.type === "hello") {
-      for (const ch of [riskChart, clsChart, volChart]) { ch.options.scales.x.min = m.start; ch.options.scales.x.max = m.end; }
-      const bands = m.incidents.map((i) => [i.start, Math.max(i.end, i.start + 60)]);
-      riskChart.options.plugins.bands = { bands, threshold: m.threshold, watch: m.watch_threshold };
-      volChart.options.plugins.bands = { bands }; clsChart.options.plugins.bands = { bands };
-      incidentStart = m.incidents.length ? m.incidents.filter((i) => i.start >= m.start)[0]?.start : null;
-      setText("clock", `Ogrevanje na ${m.warmup_minutes} min zgodovine …`);
-    } else if (m.type === "minute") {
-      riskChart.data.datasets[0].data.push({ x: m.t, y: Math.min(m.risk, 100) });
-      if (m.card) {
-        riskChart.data.datasets[m.card.level === "watch" ? 2 : 1].data.push({ x: m.t, y: Math.min(m.risk, 100) });
-        onAlert(m.card);
-        if (!firstAlert) firstAlert = m.t;
-      }
-      clsChart.data.datasets[0].data.push({ x: m.t, y: m.cls.weed });
-      clsChart.data.datasets[1].data.push({ x: m.t, y: m.cls.marker });
-      clsChart.data.datasets[2].data.push({ x: m.t, y: m.cls.seed });
-      volChart.data.datasets[0].data.push({ x: m.t, y: m.n });
-      for (const ch of [riskChart, clsChart, volChart]) ch.update("none");
-      const f = m.funnel;
-      setText("k-lines", fmt.format(f.lines)); setText("k-warn", fmt.format(f.warn_err));
-      setText("k-seed", fmt.format(f.seed)); setText("k-events", fmt.format(f.events)); setText("k-alerts", fmt.format(f.alerts));
-      setText("k-seed-note", f.warn_err ? `${Math.round(100 * (1 - f.seed / f.warn_err))} % WARN/ERROR je šum` : "plevel in markerji izločeni");
-      if (firstAlert && incidentStart) {
-        const lead = Math.round((incidentStart - firstAlert) / 60);
-        setText("k-alert-note", lead > 0 ? `prvo opozorilo ${lead} min pred izpadom` : lead === 0 ? "opozorilo ob začetku izpada" : `opozorilo ${-lead} min po začetku`);
-      } else if (firstAlert) setText("k-alert-note", "prvi ob " + hhmm(firstAlert));
-      if (m.rss_mb) { setText("k-rss", m.rss_mb + " MB"); $("k-rss-bar").style.width = Math.min(100, m.rss_mb / 512 * 100) + "%"; }
-      setText("clock", "Čas v podatkih: " + dayhm(m.t) + " UTC");
-      if (m.events.length) addFeed(m.t, m.events);
-    } else if (m.type === "done") {
-      source.close(); source = null; $("go").textContent = "▶ Predvajaj";
-    }
-  };
-  source.onerror = () => { if (source) { source.close(); source = null; $("go").textContent = "▶ Predvajaj"; } };
-}
-
-// ---- overview -------------------------------------------------------------
-function tile(label, value, note) {
-  const d = document.createElement("div"); d.className = "tile";
-  const l = document.createElement("div"); l.className = "label"; l.textContent = label;
-  const v = document.createElement("div"); v.className = "value"; v.textContent = value;
-  d.append(l, v);
-  if (note) { const n = document.createElement("div"); n.className = "note"; n.textContent = note; d.append(n); }
-  return d;
-}
-
-async function loadOverview() {
-  const env = $("ov-env").dataset.want || $("ov-env").value || "vit-3";
-  delete $("ov-env").dataset.want;
-  const r = await fetch("/api/overview?env=" + env).then((x) => x.json());
-  if (!scenarios.length) initScenarios(r.scenarios);
-  const sel = $("ov-env");
-  if (r.envs && sel.options.length !== r.envs.length) {
-    sel.textContent = "";
-    for (const e of r.envs) {
-      const o = document.createElement("option"); o.value = e;
-      o.textContent = e === "bgl" ? "BGL (javni nabor, Blue Gene/L)" : e; sel.append(o);
-    }
-  }
-  sel.value = r.env;
-  const b = r.batch, tot = r.summary.total, s = r.eval.summary, cls = r.classes, es = r.env_summary || {};
-  const labeled = !!es.labeled;
-  const warn = Object.values(cls).reduce((a, c) => a + c.lines, 0);
-  const tiles = $("ov-tiles"); tiles.textContent = "";
-  $("ov-chaos-box").classList.toggle("hidden", labeled);
-  $("ov-inc-title").textContent = labeled
-    ? "Incidenti s pravimi oznakami (prikazani le „čisti“: ≥ 6 h miru pred njimi)"
-    : "Incidenti in ali smo jih ujeli";
-  if (labeled) {
-    const iso = es.isolated || {};
-    tiles.append(
-      tile("Obdelano", (b.bytes / 1e9).toFixed(2) + " GB", `${fmt.format(b.lines)} vrstic v ${b.secs} s`),
-      tile(`WARN/ERROR/FATAL v ${env}`, fmt.format(warn), `${fmt.format(es.naive.warn_error_lines)} vrstic; FATAL ≠ alarm`),
-      tile("Ujeti incidenti (prave oznake)", `${es.caught} / ${es.outages}`, `${Math.round(100 * es.caught / es.outages)} %, isti model brez prilagajanja`),
-      tile("Lažni alarmi", es.fa_per_day.toFixed(1) + " / dan", `${es.days.toFixed(0)} dni podatkov`),
-      tile("Čisti incidenti: ujeti", `${iso.caught} / ${iso.n}`, `OPAZUJ ≥10 min prej: ${iso.watch_lead_ge_10}`),
-      tile("Naiven prag WARN/ERROR", `${es.naive.caught} / ${es.naive.outages}`, `${es.naive.fa_per_day.toFixed(1)} lažnih/dan`),
-    );
-  } else tiles.append(
-    tile("Obdelano (oba okolja)", (b.bytes / 1e9).toFixed(1) + " GB", `${fmt.format(b.lines)} vrstic v ${b.secs} s`),
-    tile("Hitrost", (b.mb_per_s / 1000).toFixed(2) + " GB/s", `${fmt.format(b.lines_per_s)} vrstic/s, ${b.workers} procesi`),
-    tile("Vrh RAM (ocena)", Math.round(b.est_total_peak_mb) + " MB", "vsota vrhov vseh procesov, limit 512 MB"),
-    tile(`WARN/ERROR v ${env}`, fmt.format(warn), `${Math.round(100 * (1 - (cls.seed?.lines || 0) / warn))} % je plevel ali marker`),
-    tile("Ujeti izpadi (oba okolja)", `${tot.caught} / ${tot.outages}`, `${tot.predicted} pred začetkom`),
-    tile("Lažni alarmi", tot.fa_per_day.toFixed(1) + " / dan", `ALARM prag ${tot.threshold}; OPAZUJ ${tot.watch_per_day.toFixed(1)}/dan`),
-  );
-  const ch = Object.values(tot.chaos || {});
-  if (!labeled && ch.length) {
-    const runs = ch.reduce((a, c) => a + c.runs, 0), pred = ch.reduce((a, c) => a + c.predicted, 0);
-    const w10 = ch.reduce((a, c) => a + c.watch_lead_ge_10, 0);
-    tiles.append(tile("Sintetične počasne degradacije", `${pred} / ${runs}`, `ALARM pred izpadom; OPAZUJ ≥10 min prej: ${w10}/${runs}`));
-  }
-  if (!labeled && tot.naive) tiles.append(tile("Naiven prag WARN/ERROR", `${tot.naive.caught} / ${tot.naive.outages}`, `${tot.naive.fa_per_day.toFixed(1)} lažnih/dan, brez razlage`));
-  const cb = $("ov-chaos"); cb.textContent = "";
-  for (const [k, c] of Object.entries(tot.chaos || {})) {
-    const tr = document.createElement("tr");
-    for (const [v, cls] of [[c.desc, ""], [`${c.predicted}/${c.runs}`, "num"], [c.median_lead_min + " min", "num"],
-                            [`${c.watch_lead_ge_10}/${c.runs}`, "num"], [c.median_watch_lead_min + " min", "num"]]) {
-      const td = document.createElement("td"); td.textContent = v; if (cls) td.className = cls; tr.append(td);
-    }
-    cb.append(tr);
-  }
-  ovChart && ovChart.destroy();
-  const o = baseOptions("tveganje", { days: true, y: { suggestedMax: 40 } });
-  o.plugins.bands = { bands: r.incidents.map((i) => [i.start, Math.max(i.end, i.start + 600)]), threshold: tot.threshold, watch: tot.threshold / 2 };
-  o.scales.x.min = r.risk[0][0]; o.scales.x.max = r.risk[r.risk.length - 1][0];
-  const line = lineDataset("tveganje", css("--series-1"));
-  line.data = r.risk.map((x) => ({ x: x[0], y: Math.min(x[1], 120) }));
-  const al = alertDataset(); al.pointRadius = 5;
-  al.data = r.alerts.map((a) => ({ x: a.t, y: Math.min(a.risk, 120) }));
-  ovChart = new Chart($("c-ov"), { type: "line", options: o, data: { datasets: [line, al] } });
-
-  const inc = $("ov-inc"); inc.textContent = "";
-  const rows = labeled ? r.eval.incidents.filter((i) => (i.quiet_before_min || 0) >= 360).slice(0, 40) : r.eval.incidents;
-  for (const i of rows) {
-    const tr = document.createElement("tr");
-    const lead = i.lead_min == null ? "—" : (i.lead_min > 0 ? `${i.lead_min} min prej` : i.lead_min === 0 ? "ob začetku" : `${-i.lead_min} min pozneje`);
-    for (const [v, c] of [[i.id, ""], [dayhm(i.start), ""], [i.kinds.map((k) => KIND_LABEL[k] || k).join(", "), ""],
-                          [OUTCOME[i.outcome] + (i.severity < 2 ? " (info)" : ""), i.outcome !== "missed" ? "ok" : ""], [lead, "num"],
-                          [i.watch_lead_min > 0 ? `${i.watch_lead_min} min prej` : "—", "num"], [i.alert_title || "—", ""]]) {
-      const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.append(td);
-    }
-    inc.append(tr);
-  }
-  const ct = $("ov-cls"); ct.textContent = "";
-  const color = { weed: css("--weed"), marker: css("--series-1"), seed: css("--series-2") };
-  for (const e of r.examples) {
-    const tr = document.createElement("tr");
-    const td1 = document.createElement("td"); const sw = document.createElement("span"); sw.className = "cls"; sw.style.background = color[e.class];
-    td1.append(sw, document.createTextNode(CLS_LABEL[e.class]));
-    const td2 = document.createElement("td");
-    const lg = document.createElement("div"); lg.textContent = `${e.level} · ${e.logger}`;
-    const tp = document.createElement("div"); tp.style.color = "var(--ink-2)"; tp.textContent = e.template;
-    const rs = document.createElement("div"); rs.style.color = "var(--muted)"; rs.style.fontSize = "12px"; rs.textContent = "zakaj: " + e.reason;
-    td2.append(lg, tp, rs);
-    const td3 = document.createElement("td"); td3.className = "num"; td3.textContent = fmt.format(e.n);
-    tr.append(td1, td2, td3); ct.append(tr);
-  }
-}
-
-function initScenarios(list) {
-  scenarios = list;
-  const sel = $("scenario");
-  list.forEach((s, i) => { const o = document.createElement("option"); o.value = i; o.textContent = s.label; sel.append(o); });
-}
-
-function showTab(which) {
-  $("live").classList.toggle("hidden", which !== "live");
-  $("overview").classList.toggle("hidden", which !== "overview");
-  $("tab-live").classList.toggle("active", which === "live");
-  $("tab-overview").classList.toggle("active", which === "overview");
-  if (which === "overview") loadOverview();
-}
-$("tab-live").onclick = () => showTab("live");
-$("tab-overview").onclick = () => showTab("overview");
-$("ov-env").onchange = loadOverview;
-$("go").onclick = start;
-makeLiveCharts();
-const params = new URLSearchParams(location.search);
-fetch("/api/overview?env=vit-3").then((x) => x.json()).then((r) => {
-  initScenarios(r.scenarios);
-  const sp = params.get("speed");
-  if (sp) {
-    if (![...$("speed").options].some((o) => o.value === sp)) {
-      const o = document.createElement("option"); o.value = sp; o.textContent = sp + "× hitreje"; $("speed").append(o);
-    }
-    $("speed").value = sp;
-  }
-  const auto = scenarios.findIndex((s) => s.id === params.get("autoplay"));
-  if (auto >= 0) { $("scenario").value = auto; start(); }
-  if (params.get("tab") === "overview") { if (params.get("env")) $("ov-env").dataset.want = params.get("env"); showTab("overview"); }
-});
-</script>
-</body>
-</html>
+<dialog id="rules-dialog" class="rules-dialog" aria-labelledby="rules-title">
+  <div class="rules-heading"><div><h2 id="rules-title">Grouping rules</h2><p id="rules-context"></p></div><button id="close-rules" class="quiet" aria-label="Close grouping rules">×</button></div>
+  <p class="rules-purpose">Group matching messages together in the log view. Original logs and anomaly detection stay unchanged.</p>
+  <div id="rule-error" class="notice error" role="alert" hidden></div>
+  <section id="rules-home"><div id="rules-list"></div><button id="new-rule" class="primary">+ New rule</button><p class="small muted rule-order">Rules are checked in the order shown; the first match applies. Logs stay separated by service, logger, severity and status/response code.</p><details id="removed-rules" hidden><summary id="removed-rules-caption">Removed rules</summary><div id="removed-rules-list"></div></details></section>
+  <form id="rule-form" hidden>
+    <div class="rule-editor-heading"><h3 id="rule-editor-title">New grouping rule</h3><button type="button" id="back-to-rules" class="link-button">← Saved rules</button></div>
+    <label class="rule-field">Rule name<input id="rule-name" maxlength="80" required placeholder="For example: Incomplete EPP runs"></label>
+    <label class="rule-field">Message pattern<textarea id="rule-template" rows="3" maxlength="2000" required spellcheck="false" placeholder="Continue last incomplete run after EPP <*> with a timeout of <*> ms."></textarea></label>
+    <p class="rule-help">Replace changing values with <code>&lt;*&gt;</code>. Other text is literal. The pattern matches the whole message; whitespace is normalized.</p>
+    <div class="rule-scope-grid"><label class="rule-field">Service<select id="rule-service"></select></label><label class="rule-field">Severity (exact)<select id="rule-level"></select></label><label class="rule-field rule-logger-field">Logger<input id="rule-logger" maxlength="300" placeholder="All loggers"></label></div>
+    <details id="rule-original" hidden><summary>Original message</summary><pre id="rule-original-message"></pre></details>
+    <div class="rule-preview-actions"><button id="preview-rule" class="quiet" type="button">Preview matches</button><span class="small muted">Uses up to 500 original message samples from the loaded query.</span></div>
+    <section id="rule-preview" class="rule-preview" role="status" hidden></section>
+    <footer class="rule-editor-footer"><span id="rule-save-hint" class="small muted">Preview the pattern before saving.</span><button id="save-rule" class="primary" type="submit" disabled>Save rule</button></footer>
+  </form>
+</dialog>
+</body></html>

@@ -123,3 +123,102 @@ Isti model in isti pragovi brez prilagajanja, na 7 mesecih logov superračunalni
 `batch.py` vzporedni shardi · `profile.py` plevel/marker/seme · `labels.py` definicija „SYSTEM DOWN“ ·
 `predict.py` napovednik · `explain.py` kartice · `evaluate.py`, `chaos.py` evalvacija · `stream.py`, `server.py`, `dashboard/` demo · `llm.py` AI povzetek
 # hekaton
+
+## Log investigation dashboard
+
+One UTC time range drives the charts, alerts and log table. Open the range button
+for absolute dates or quick ranges. Quick ranges end at the latest recorded time
+(or replay cursor), since these exports are historical. Drag a chart to zoom and
+filter logs. **Previous range** restores the last selection; **Zoom out** doubles
+the visible span. **Earlier / Later** inside the time picker shift it by half its
+duration. Previous range appears only after a range change. The
+range, environment, minimum severity, search, service and presentation mode are
+preserved in the URL. Alert selection opens the ten
+minutes leading up to that alert.
+
+**Minimum level** is a severity threshold, initially **INFO**. INFO
+includes INFO, WARN, ERROR and CRITICAL/FATAL; WARN includes WARN and higher, and
+ERROR includes ERROR and higher. Choices are colored and populated from severities
+present in the environment's minute aggregates; these exports offer INFO/WARN/ERROR.
+**All levels** also includes entries without a recognized severity. Service and
+text filters narrow the evidence further. **Grouped** groups
+the same logger, service, severity and normalized message across the entire
+selected interval. Embedded timestamps, task IDs, durations, file/resource names
+and host/entity parameters are variables; explicit status, failure and response
+code outcomes remain distinct. This is presentation grouping, not a detector change.
+
+**Grouping rules** beside the Logs heading manages saved custom message patterns.
+Expand a row and choose **Create grouping rule** to start with its message pattern
+and service/logger/severity scope. Replace changing text with `<*>`; all remaining
+characters are literal, and the entire whitespace-normalized message must match.
+For example: `Continue last incomplete run after EPP <*> with a timeout of <*> ms.`
+Preview shows up to 500 distinct original message samples from the loaded query,
+with matching/non-matching examples. It reads no additional source bytes and does
+not represent a full-range occurrence count. Saving requires a preview; a zero-match
+rule can still be saved for messages outside those samples.
+
+Rules persist per environment on the server in `out/grouping-rules.json`. They can
+be edited, removed and restored from **Removed rules**. The first matching saved
+rule wins; the automatic grouping remains the fallback. Status/response-code
+differences still produce separate groups, as do different services, loggers and
+severities. Rows identify the custom rule applied. Saving/removing/restoring a rule
+invalidates cached queries for that environment and regroups the selected range;
+the original logs, learned detection profile, scores and alerts remain unchanged.
+Pattern isolation is cleared on a rule change. Saved hidden-pattern IDs remain,
+but a group whose template changes can acquire a new ID and need hiding again.
+The rules API is `GET /api/pattern-rules?env=...` and JSON `POST /api/pattern-rules`
+with `env`, the current `revision`, and `action` (`save`, `delete`, `restore`). Save
+includes `rule` and optionally an existing `id`; delete/restore use `id`.
+`POST /api/pattern-rules/preview` takes `env`, the current log-query `job`, and a
+draft `rule`; preview requests can also include replay `asof` and pattern filters.
+
+Expand a pattern to see original messages, first/last occurrence, instances,
+affected hosts/entities and source file/byte locations. **Individual** shows individual
+occurrences. **Hide pattern** suppresses that pattern across services; **Only this pattern**
+is available in the expanded row. Hidden patterns persist in this browser per
+environment. Restore individual patterns or use **Restore all**. **Reset filters** clears
+search, service and pattern isolation and restores the default minimum severity;
+it preserves deliberately hidden patterns. Sources and detector inputs are never
+deleted or changed.
+
+Log retrieval is progressive: even the entire recorded period produces initial
+results while source scanning continues. Counts are labeled "so far" until complete.
+Expanding a row pauses scanning and replay so evidence stays still; **Resume scan**
+explicitly resumes. The progress label shows reading/processing and bytes scanned:
+new queries parse and normalize messages as well as reading them. Each request
+advances at most about 8 MB / 650 ms of
+work (a source block boundary may add overhead). Cancelling or pausing stops further
+requests. Three query states, a 20,000-pattern limit and a bounded message buffer
+protect memory. Resource-limited partial results are explicit. Pages contain up to
+100 rows; individual-record browsing retains the newest 5,100 records, so narrow the
+range or filters to browse older occurrences.
+
+Original INFO messages require the raw operational TXT exports in `--raw-dir`.
+Without them, the viewer explicitly falls back to prepared WARN+ samples. A small
+event-time block index under `out/explorer-index/` makes time lookup independent
+of arrival order. It is reused until the source size/mtime changes. No message text
+is stored in this index. Source previews cap messages at 24 KB and raw records at
+128 KB. Endpoints are `/api/workspace`, `/api/logs`, `/api/source`; progressive
+responses include a `job` token, `pending`, `progress`, and `complete`. A subsequent
+`/api/logs?job=...` advances the scan; `advance=0` reads a snapshot without scanning.
+`exclude` and `only` are snapshot filters on the existing query, so hiding,
+restoring or isolating patterns never restarts its source scan. Include them on
+each job request. Queries share the underlying scan regardless of these filters.
+Intervals use `[start, end)` epoch seconds. `min_level` selects the inclusive
+minimum severity. The older `level` parameter retains exact-level filtering for
+benchmark scripts (`WARN+` remains supported). Unknown severities are included
+only when no minimum is set. Viewer filtering does not change detector levels.
+
+**Replay range** plays recorded minute scores and alerts. Inspection pauses replay;
+resuming deliberately restores its original range and cursor. Future logs and alerts
+are hidden until reached. There are no automatic AI calls. This remains a local
+hackathon viewer, with the original ingestion, profiles, scoring and alert policy.
+Replay extends its query with `job`, `extend_to` and `asof`, processing disjoint
+new time intervals instead of rescanning the whole accumulated range. Sparse
+source blocks may overlap between intervals, but previous records are not parsed,
+normalized or counted again. Existing table rows update in place; playback holds
+the viewport still and Hide pattern preserves the current reading position.
+The source index contains time bounds, not a fully parsed message database, so
+first-time queries over several days still require a substantial scan.
+
+Run checks: `python -m unittest discover -s tests -v` (37 tests).
