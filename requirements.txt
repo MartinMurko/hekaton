@@ -1,0 +1,2 @@
+orjson>=3.10
+anthropic>=1.16  # optional: AI alert summaries
